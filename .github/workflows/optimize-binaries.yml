@@ -122,14 +122,11 @@ jobs:
         for file in *.tar.gz; do
           if [[ -f "$file" ]]; then
             echo "⬆️ Uploading $file..."
-            curl \
-              -X POST \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Content-Type: application/gzip" \
-              --data-binary "@$file" \
-              "${{ steps.create_release.outputs.upload_url }}?name=$file"
+            gh release upload "${{ env.TAG_NAME }}" "$file" --clobber
           fi
         done
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Upload artifacts (for workflow runs)
       uses: actions/upload-artifact@v4
