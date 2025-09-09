@@ -2,7 +2,7 @@
 
 🚀 **Releases of optimized binaries pruned from upstream sources**
 
-This project solves the problem of large, bloated binary distributions by extracting and repacking only the specific binaries you need. Instead of downloading massive archives (often 100MB+) that contain entire toolchains, get just the binary you want in a compact package (typically 90%+ smaller).
+This project solves the problem of large, bloated binary distributions by extracting and repacking only the specific binaries you need. Instead of downloading massive archives (often 100MB+) that contain entire toolchains, get just the binary you want in a compact package.
 
 ## 🎯 Problem Solved
 
