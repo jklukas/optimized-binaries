@@ -1,0 +1,21 @@
+# Downloaded archives
+*.tar.xz
+*.tar.gz
+*.zip
+
+# Test output directory
+test-output/
+
+# Temporary directories
+tmp/
+temp/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log

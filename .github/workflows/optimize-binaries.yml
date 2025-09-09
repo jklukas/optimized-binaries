@@ -1,0 +1,158 @@
+name: Optimize Binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      config_file:
+        description: 'Configuration file to use'
+        required: false
+        default: 'config.json'
+        type: string
+      tag_name:
+        description: 'Tag name for the release (e.g., clang-format-16.0.0)'
+        required: false
+        type: string
+  push:
+    tags:
+      - 'clang-format-*'
+      - 'v*'
+
+env:
+  KEEP_ARCHIVES: false
+
+jobs:
+  optimize-binaries:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y curl jq xz-utils
+        
+    - name: Set up variables
+      id: vars
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          CONFIG_FILE="${{ github.event.inputs.config_file }}"
+          if [[ -n "${{ github.event.inputs.tag_name }}" ]]; then
+            TAG_NAME="${{ github.event.inputs.tag_name }}"
+          else
+            # Generate tag from config if not provided
+            TOOL=$(jq -r 'keys[0]' "${{ github.event.inputs.config_file }}")
+            VERSION=$(jq -r ".[\"$TOOL\"].version" "${{ github.event.inputs.config_file }}")
+            TAG_NAME="${TOOL}-${VERSION}"
+          fi
+        else
+          CONFIG_FILE="config.json"
+          TAG_NAME="${{ github.ref_name }}"
+        fi
+        
+        echo "config_file=$CONFIG_FILE" >> $GITHUB_OUTPUT
+        echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+        echo "CONFIG_FILE=$CONFIG_FILE" >> $GITHUB_ENV
+        echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+        
+        echo "Using config file: $CONFIG_FILE"
+        echo "Release tag: $TAG_NAME"
+    
+    - name: Validate configuration
+      run: |
+        if [[ ! -f "$CONFIG_FILE" ]]; then
+          echo "❌ Configuration file $CONFIG_FILE not found"
+          exit 1
+        fi
+        
+        echo "✅ Configuration file found: $CONFIG_FILE"
+        echo "📋 Configuration contents:"
+        cat "$CONFIG_FILE"
+        
+    - name: Run optimization script  
+      run: |
+        echo "🚀 Starting binary optimization..."
+        ./optimize-binaries.sh "$CONFIG_FILE"
+        
+    - name: List generated files
+      run: |
+        echo "📁 Generated optimized binaries:"
+        ls -la *.tar.gz || echo "No .tar.gz files found"
+        
+    - name: Create release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ env.TAG_NAME }}
+        release_name: ${{ env.TAG_NAME }}
+        body: |
+          ## Optimized Binaries - ${{ env.TAG_NAME }}
+          
+          This release contains optimized, repacked binaries extracted from upstream sources.
+          
+          ### What's included:
+          - Significantly smaller download sizes (typically 90%+ reduction)
+          - Only the essential binary files, no extra toolchain components
+          - Cross-platform support (Linux, macOS)
+          
+          ### Files:
+          $(ls *.tar.gz 2>/dev/null | sed 's/^/- /' || echo "- No optimized binaries generated")
+          
+          ### Usage:
+          Download the appropriate binary for your platform, extract it, and use directly.
+          
+          ```bash
+          # Example for Linux x86_64:
+          curl -L -O "https://github.com/${{ github.repository }}/releases/download/${{ env.TAG_NAME }}/clang-format-*-linux-x86_64.tar.gz"
+          tar -xzf clang-format-*-linux-x86_64.tar.gz
+          ./clang-format --version
+          ```
+          
+          Generated from configuration: `${{ env.CONFIG_FILE }}`
+        draft: false
+        prerelease: false
+        
+    - name: Upload optimized binaries
+      run: |
+        echo "📤 Uploading optimized binaries as release assets..."
+        
+        for file in *.tar.gz; do
+          if [[ -f "$file" ]]; then
+            echo "⬆️ Uploading $file..."
+            curl \
+              -X POST \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Content-Type: application/gzip" \
+              --data-binary "@$file" \
+              "${{ steps.create_release.outputs.upload_url }}?name=$file"
+          fi
+        done
+        
+    - name: Upload artifacts (for workflow runs)
+      uses: actions/upload-artifact@v4
+      with:
+        name: optimized-binaries-${{ env.TAG_NAME }}
+        path: '*.tar.gz'
+        retention-days: 30
+        
+    - name: Summary
+      run: |
+        echo "## 🎉 Optimization Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Generated Files:" >> $GITHUB_STEP_SUMMARY
+        
+        for file in *.tar.gz; do
+          if [[ -f "$file" ]]; then
+            size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file")
+            size_human=$(numfmt --to=iec "$size" 2>/dev/null || echo "$size bytes")
+            echo "- **$file** ($size_human)" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔗 Links:" >> $GITHUB_STEP_SUMMARY
+        echo "- [📋 Release: ${{ env.TAG_NAME }}](${{ steps.create_release.outputs.html_url }})" >> $GITHUB_STEP_SUMMARY
+        echo "- [📦 Workflow Artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
